@@ -623,28 +623,41 @@ function calcHydrationNeed() {
   if (sleepToday < wakeToday) sleepToday.setDate(sleepToday.getDate() + 1);
   const awakeMinutes = Math.max(1, (sleepToday - wakeToday) / 60000);
 
-  // Ideal interval between drinks (250ml per drink, ~35ml/kg/day)
-  const dailyMl = weightKg * 35;
-  const glassesNeeded = dailyMl / 250;
-  const idealIntervalMins = awakeMinutes / glassesNeeded;
+  // Time score (0-80) — real-world thresholds
+  // 0-60 min   → 0-15   (thriving, just drank)
+  // 60-120 min → 15-35  (still ok)
+  // 120-180 min → 35-55 (getting stressed)
+  // 180-240 min → 55-70 (visibly wilting)
+  // 240+ min   → 70-80  (critical)
+  let timeScore = 0;
+  if (minutesSince <= 60) {
+    timeScore = (minutesSince / 60) * 15;
+  } else if (minutesSince <= 120) {
+    timeScore = 15 + ((minutesSince - 60) / 60) * 20;
+  } else if (minutesSince <= 180) {
+    timeScore = 35 + ((minutesSince - 120) / 60) * 20;
+  } else if (minutesSince <= 240) {
+    timeScore = 55 + ((minutesSince - 180) / 60) * 15;
+  } else {
+    timeScore = Math.min(80, 70 + ((minutesSince - 240) / 60) * 5);
+  }
 
-  // Time score (0-60)
-  const timeScore = Math.min(60, (minutesSince / idealIntervalMins) * 60);
-
-  // Temperature score (0-25)
+  // Temperature score (0-15) — reduced weight
   const temp = state.weatherTemp ?? 28;
   let tempScore = 0;
-  if (temp >= 40) tempScore = 25;
-  else if (temp >= 35) tempScore = 20;
-  else if (temp >= 30) tempScore = 14;
-  else if (temp >= 25) tempScore = 8;
-  else tempScore = 3;
+  if (temp >= 40) tempScore = 15;
+  else if (temp >= 37) tempScore = 12;
+  else if (temp >= 33) tempScore = 8;
+  else if (temp >= 28) tempScore = 4;
+  else tempScore = 1;
 
-  // Deficit score (0-15): how many glasses behind today's target
+  // Deficit score (0-10) — behind daily target?
+  const dailyMl = weightKg * 35;
+  const glassesNeeded = dailyMl / 250;
   const hoursAwakeSoFar = Math.min(awakeMinutes, (now - wakeToday) / 60000) / 60;
   const expectedByNow = Math.max(0, (hoursAwakeSoFar / (awakeMinutes / 60)) * glassesNeeded);
   const deficit = Math.max(0, expectedByNow - state.glassesToday);
-  const deficitScore = Math.min(15, deficit * 5);
+  const deficitScore = Math.min(10, deficit * 4);
 
   const total = Math.min(100, Math.round(timeScore + tempScore + deficitScore));
   return total;
